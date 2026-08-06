@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-const EMPTY = { name: '', color: '#4f6fe8', active: true };
+const EMPTY = { name: '', color: '#4f6fe8' };
 
 export default function EditorManager({ editors, onCreate, onUpdate, onDelete, onClose }) {
   const [draft, setDraft] = useState(EMPTY);
@@ -13,7 +13,6 @@ export default function EditorManager({ editors, onCreate, onUpdate, onDelete, o
     setDraft({
       name: editor.name,
       color: editor.color || '#4f6fe8',
-      active: editor.active !== false,
     });
     setError('');
   }
@@ -31,7 +30,7 @@ export default function EditorManager({ editors, onCreate, onUpdate, onDelete, o
     const payload = {
       name: draft.name.trim(),
       color: draft.color,
-      active: draft.active,
+      active: true,
     };
     try {
       if (editingId) await onUpdate(editingId, payload);
@@ -89,16 +88,6 @@ export default function EditorManager({ editors, onCreate, onUpdate, onDelete, o
               />
             </div>
           </label>
-          {editingId && (
-            <label className="checkbox">
-              <input
-                type="checkbox"
-                checked={draft.active}
-                onChange={(event) => setDraft({ ...draft, active: event.target.checked })}
-              />
-              <span>Active (shows in task editor dropdown)</span>
-            </label>
-          )}
           <div className="inline-controls end">
             {editingId && (
               <button className="button ghost compact" type="button" onClick={reset}>
@@ -122,21 +111,16 @@ export default function EditorManager({ editors, onCreate, onUpdate, onDelete, o
                 />
                 <div>
                   <strong>{editor.name}</strong>
-                  <span>
-                    {editor.color}
-                    {editor.active === false ? ' · inactive' : ''}
-                  </span>
+                  <span>{editor.color}</span>
                 </div>
               </div>
               <div className="row-actions">
                 <button className="button ghost compact" type="button" onClick={() => beginEdit(editor)}>
                   Edit
                 </button>
-                {editor.active !== false && (
-                  <button className="button danger compact" type="button" onClick={() => onDelete(editor)}>
-                    Deactivate
-                  </button>
-                )}
+                <button className="button danger compact" type="button" onClick={() => onDelete(editor)}>
+                  Delete
+                </button>
               </div>
             </div>
           ))}

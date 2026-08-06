@@ -149,14 +149,10 @@ router.delete('/:id', async (req, res) => {
     return res.status(400).json({ message: 'Invalid editor id.' });
   }
 
-  // Soft-delete so historical task names stay meaningful; manager can re-activate later.
-  const editor = await Editor.findByIdAndUpdate(
-    req.params.id,
-    { active: false },
-    { new: true },
-  );
+  // Permanent delete. Task documents keep historical editor names as plain strings.
+  const editor = await Editor.findByIdAndDelete(req.params.id);
   if (!editor) return res.status(404).json({ message: 'Editor not found.' });
-  res.json(editor);
+  res.status(204).send();
 });
 
 export default router;

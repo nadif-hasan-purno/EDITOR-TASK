@@ -4,7 +4,6 @@ export const DEFAULT_EDITORS = [
   { name: 'Ashik', color: '#4f6fe8' },
   { name: 'Amiyo', color: '#0d9488' },
   { name: 'Pranto', color: '#7c3aed' },
-  { name: 'Rasel', color: '#ea580c' },
   { name: 'Fahim', color: '#db2777' },
   { name: 'Thumbnail designer', color: '#059669' },
 ];

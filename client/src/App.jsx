@@ -344,12 +344,16 @@ export default function App() {
   }
 
   async function deleteEditor(editor) {
-    if (!window.confirm(`Deactivate editor “${editor.name}”? Existing tasks keep the name.`)) return;
+    if (
+      !window.confirm(
+        `Permanently delete editor “${editor.name}”? Existing tasks keep the name as text, but they won’t appear in the roster.`,
+      )
+    ) {
+      return;
+    }
     try {
-      const updated = await api.deleteEditor(editor._id);
-      setEditorRoster((current) =>
-        current.map((item) => (item._id === editor._id ? updated : item)),
-      );
+      await api.deleteEditor(editor._id);
+      setEditorRoster((current) => current.filter((item) => item._id !== editor._id));
     } catch (requestError) {
       setError(requestError.message);
     }

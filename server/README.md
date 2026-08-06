@@ -29,24 +29,26 @@ CLIENT_ORIGIN=http://localhost:5173
 
 This API always allows:
 
-- `http://localhost:5173` (local Vite)
-- `https://editflows-manager-frontend.onrender.com` (production frontend)
+- `http://localhost:5173` / `4173` (local Vite)
+- `https://editor-task-1.onrender.com` (current frontend)
+- `https://editor-task.onrender.com` (API host also listed for safety)
+- any `https://editor-task*.onrender.com` / `editflows-manager*.onrender.com` host
 
 So local and Render keep working even if `CLIENT_ORIGIN` is only set to localhost.
 
-On the **API service** (`editflows-manager`), still set:
+On the **API service** (`editor-task` on Render), still set:
 
 ```env
 MONGODB_URI=<your Atlas or hosted Mongo URI>
-CLIENT_ORIGIN=https://editflows-manager-frontend.onrender.com
+CLIENT_ORIGIN=https://editor-task-1.onrender.com
 ```
 
 After changing CORS code or env vars, **redeploy / restart the API service**. The frontend alone cannot fix CORS — the browser checks response headers from the API.
 
-On the **frontend** service, build with:
+On the **frontend** service (`editor-task-1`), build with:
 
 ```env
-VITE_API_URL=https://editflows-manager.onrender.com/api
+VITE_API_URL=https://editor-task.onrender.com/api
 ```
 
 ## Main endpoints

@@ -19,6 +19,7 @@ async function start() {
     if (process.env.CLIENT_ORIGIN) {
       console.log(`CLIENT_ORIGIN env: ${process.env.CLIENT_ORIGIN}`);
     }
+    console.log('CORS: defaults + CLIENT_ORIGIN + editor-task*.onrender.com / editflows-manager*.onrender.com');
   });
 
   const shutdown = async (signal) => {

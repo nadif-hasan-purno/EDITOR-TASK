@@ -1,14 +1,15 @@
 import React, { useMemo, useState } from 'react';
 import { STATUSES } from '../constants.js';
-import { formatShortDate, getDueDate, groupTasksForAgenda } from '../utils/taskMeta.js';
+import { groupTasksForAgenda } from '../utils/taskMeta.js';
 import { EditorBadges } from './EditorBadge.jsx';
 import { getTaskEditors } from '../utils/editors.js';
+import DeadlineCountdown from './DeadlineCountdown.jsx';
 
 function statusSlug(status) {
   return status.toLowerCase().replaceAll(' ', '-');
 }
 
-export default function AgendaView({ tasks, onEdit, onDelete, onStatusChange, editors = [] }) {
+export default function AgendaView({ tasks, onOpen, onEdit, onDelete, onStatusChange, editors = [] }) {
   const sections = useMemo(() => groupTasksForAgenda(tasks), [tasks]);
   const [collapsed, setCollapsed] = useState(() => new Set());
 
@@ -52,7 +53,11 @@ export default function AgendaView({ tasks, onEdit, onDelete, onStatusChange, ed
                       <div className="agenda-main">
                         <span className={`priority-dot priority-dot-${priority}`} title={priority} aria-hidden="true" />
                         <div className="agenda-copy">
-                          <button type="button" className="agenda-title" onClick={() => onEdit(task)}>
+                          <button
+                            type="button"
+                            className="agenda-title"
+                            onClick={() => (onOpen ? onOpen(task) : onEdit(task))}
+                          >
                             {task.projectName}
                           </button>
                           <p className="muted tiny agenda-meta">
@@ -80,7 +85,7 @@ export default function AgendaView({ tasks, onEdit, onDelete, onStatusChange, ed
                             <option key={status} value={status}>{status}</option>
                           ))}
                         </select>
-                        <span className="agenda-date">{formatShortDate(getDueDate(task))}</span>
+                        <DeadlineCountdown task={task} size="sm" showDue />
                         <div className="row-actions">
                           <button className="button ghost compact" type="button" onClick={() => onEdit(task)}>Edit</button>
                           <button className="button danger compact" type="button" onClick={() => onDelete(task)}>Delete</button>

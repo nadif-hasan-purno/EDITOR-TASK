@@ -8,6 +8,7 @@ function statusSlug(status) {
 
 export default function BoardView({
   tasks,
+  onOpen,
   onEdit,
   onDelete,
   onTogglePin,
@@ -92,6 +93,7 @@ export default function BoardView({
                 <TaskCard
                   key={task._id}
                   task={task}
+                  onOpen={onOpen}
                   onEdit={onEdit}
                   onDelete={onDelete}
                   onTogglePin={onTogglePin}

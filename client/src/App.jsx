@@ -9,6 +9,7 @@ import BoardView from './components/BoardView.jsx';
 import AgendaView from './components/AgendaView.jsx';
 import ListView from './components/ListView.jsx';
 import TaskForm from './components/TaskForm.jsx';
+import TaskPage from './components/TaskPage.jsx';
 import DefinitionManager from './components/DefinitionManager.jsx';
 import EditorManager from './components/EditorManager.jsx';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -52,6 +53,7 @@ export default function App() {
   const [showSidePanel, setShowSidePanel] = useState(() => readStored('ct-side', '1') !== '0');
   const [editingTask, setEditingTask] = useState(null);
   const [showTaskForm, setShowTaskForm] = useState(false);
+  const [viewingTaskId, setViewingTaskId] = useState(null);
   const [showDefinitions, setShowDefinitions] = useState(false);
   const [showEditors, setShowEditors] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -162,10 +164,23 @@ export default function App() {
   const editorLoad = useMemo(() => buildEditorWorkload(tasks), [tasks]);
   const clientLoad = useMemo(() => buildClientWorkload(tasks), [tasks]);
   const recent = useMemo(() => recentActivity(tasks), [tasks]);
+  const viewingTask = useMemo(
+    () => (viewingTaskId ? tasks.find((task) => task._id === viewingTaskId) || null : null),
+    [tasks, viewingTaskId],
+  );
 
   function openCreate() {
     setEditingTask(null);
     setShowTaskForm(true);
+  }
+
+  function openTaskPage(task) {
+    if (!task?._id) return;
+    setViewingTaskId(task._id);
+  }
+
+  function closeTaskPage() {
+    setViewingTaskId(null);
   }
 
   function openEdit(task) {
@@ -180,6 +195,8 @@ export default function App() {
     rememberNames([saved]);
     setShowTaskForm(false);
     setEditingTask(null);
+    // Keep page open after edit so user returns to the updated Notion-style view
+    if (saved?._id) setViewingTaskId(saved._id);
     await loadTasks(serverFilters, false);
   }
 
@@ -192,6 +209,7 @@ export default function App() {
         next.delete(task._id);
         return next;
       });
+      if (viewingTaskId === task._id) setViewingTaskId(null);
       await loadTasks(serverFilters, false);
     } catch (requestError) {
       setError(requestError.message);
@@ -237,6 +255,75 @@ export default function App() {
         ),
       );
       setError(requestError.message);
+    }
+  }
+
+  async function changeTaskPriority(task, nextPriority) {
+    if (!task || (task.priority || 'medium') === nextPriority) return;
+    const previous = task.priority || 'medium';
+    setTasks((current) =>
+      current.map((item) =>
+        item._id === task._id ? { ...item, priority: nextPriority } : item,
+      ),
+    );
+    setError('');
+    try {
+      await api.patchTask(task._id, { priority: nextPriority });
+    } catch (requestError) {
+      setTasks((current) =>
+        current.map((item) =>
+          item._id === task._id ? { ...item, priority: previous } : item,
+        ),
+      );
+      setError(requestError.message);
+    }
+  }
+
+  /** Shared description field — Task page document ↔ Edit form */
+  async function updateTaskDescription(task, description) {
+    if (!task?._id) return;
+    const next = String(description ?? '');
+    const previous = task.description || '';
+    if (next === previous) return;
+
+    const stamp = new Date().toISOString();
+    setTasks((current) =>
+      current.map((item) =>
+        item._id === task._id
+          ? { ...item, description: next, updatedAt: stamp }
+          : item,
+      ),
+    );
+    setEditingTask((current) =>
+      current && current._id === task._id
+        ? { ...current, description: next, updatedAt: stamp }
+        : current,
+    );
+    setError('');
+
+    try {
+      const saved = await api.patchTask(task._id, { description: next });
+      if (saved && typeof saved === 'object') {
+        setTasks((current) =>
+          current.map((item) => (item._id === task._id ? { ...item, ...saved } : item)),
+        );
+        setEditingTask((current) =>
+          current && current._id === task._id ? { ...current, ...saved } : current,
+        );
+      }
+    } catch (requestError) {
+      setTasks((current) =>
+        current.map((item) =>
+          item._id === task._id ? { ...item, description: previous } : item,
+        ),
+      );
+      setEditingTask((current) =>
+        current && current._id === task._id
+          ? { ...current, description: previous }
+          : current,
+      );
+      setError(requestError.message);
+      throw requestError;
     }
   }
 
@@ -500,6 +587,7 @@ export default function App() {
             ) : view === 'board' ? (
               <BoardView
                 tasks={visibleTasks}
+                onOpen={openTaskPage}
                 onEdit={openEdit}
                 onDelete={deleteTask}
                 onTogglePin={togglePin}
@@ -510,6 +598,7 @@ export default function App() {
             ) : view === 'agenda' ? (
               <AgendaView
                 tasks={visibleTasks}
+                onOpen={openTaskPage}
                 onEdit={openEdit}
                 onDelete={deleteTask}
                 onStatusChange={changeTaskStatus}
@@ -518,6 +607,7 @@ export default function App() {
             ) : (
               <ListView
                 tasks={visibleTasks}
+                onOpen={openTaskPage}
                 onEdit={openEdit}
                 onDelete={deleteTask}
                 onTogglePin={togglePin}
@@ -536,11 +626,25 @@ export default function App() {
               recent={recent}
               onFilterEditor={(editor) => setFilters((current) => ({ ...current, editor }))}
               onFilterClient={(client) => setFilters((current) => ({ ...current, client }))}
-              onOpenTask={openEdit}
+              onOpenTask={openTaskPage}
             />
           )}
         </div>
       </main>
+
+      {viewingTask && (
+        <TaskPage
+          task={viewingTask}
+          editors={editorRoster}
+          onClose={closeTaskPage}
+          onEdit={openEdit}
+          onDelete={deleteTask}
+          onStatusChange={changeTaskStatus}
+          onPriorityChange={changeTaskPriority}
+          onTogglePin={togglePin}
+          onDescriptionChange={updateTaskDescription}
+        />
+      )}
 
       {showTaskForm && (
         <TaskForm

@@ -1,7 +1,8 @@
 import React from 'react';
-import { formatShortDate, getDueDate } from '../utils/taskMeta.js';
 import { EditorBadges } from './EditorBadge.jsx';
 import { getTaskEditors } from '../utils/editors.js';
+import DeadlineCountdown from './DeadlineCountdown.jsx';
+import { formatCreatedDate } from '../utils/dates.js';
 
 function CustomFieldValue({ field }) {
   if (field.type === 'url' && field.value) {
@@ -16,6 +17,7 @@ function statusSlug(status) {
 
 export default function TaskCard({
   task,
+  onOpen,
   onEdit,
   onDelete,
   onTogglePin,
@@ -30,16 +32,43 @@ export default function TaskCard({
 }) {
   const slug = statusSlug(task.status);
   const priority = task.priority || 'medium';
-  const dueLabel = formatShortDate(getDueDate(task));
   const isCompact = compact && !expanded;
   const taskEditors = getTaskEditors(task);
+  const dragGuard = React.useRef(false);
 
   function handleDragStart(event) {
     if (event.target.closest('button, a, .card-actions, .card-expand-btn')) {
       event.preventDefault();
       return;
     }
+    dragGuard.current = true;
     onDragStart?.(event, task);
+  }
+
+  function handleDragEnd(event) {
+    onDragEnd?.(event);
+    // Avoid click-after-drag opening the page
+    window.setTimeout(() => {
+      dragGuard.current = false;
+    }, 0);
+  }
+
+  function handleCardClick(event) {
+    if (!onOpen) return;
+    if (dragGuard.current || isDragging) return;
+    if (event.target.closest('button, a, select, input, label, .card-actions, .card-expand-btn, .pin-btn')) {
+      return;
+    }
+    onOpen(task);
+  }
+
+  function handleCardKeyDown(event) {
+    if (!onOpen) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      if (event.target !== event.currentTarget) return;
+      event.preventDefault();
+      onOpen(task);
+    }
   }
 
   return (
@@ -53,10 +82,16 @@ export default function TaskCard({
         draggable ? 'is-draggable' : '',
         isCompact ? 'is-compact' : '',
         expanded ? 'is-expanded' : '',
+        onOpen ? 'is-openable' : '',
       ].filter(Boolean).join(' ')}
       draggable={draggable}
       onDragStart={draggable ? handleDragStart : undefined}
-      onDragEnd={draggable ? onDragEnd : undefined}
+      onDragEnd={draggable ? handleDragEnd : undefined}
+      onClick={handleCardClick}
+      onKeyDown={handleCardKeyDown}
+      role={onOpen ? 'button' : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+      aria-label={onOpen ? `Open ${task.projectName}` : undefined}
     >
       <div className="task-card-topline">
         <div className="card-topline-left">
@@ -96,14 +131,24 @@ export default function TaskCard({
       <p className="muted card-meta-line">
         <span>{task.clientName}</span>
         <EditorBadges names={taskEditors} editors={editors} size="sm" />
-        <span className="due-chip">{task.deadlineDays}d · {dueLabel}</span>
+        <DeadlineCountdown task={task} size="sm" />
       </p>
 
       {!isCompact && (
         <>
-          <div className="task-metrics">
-            <span><strong>{task.deadlineDays}</strong> days left</span>
-            <span><strong>{task.duration}</strong> duration</span>
+          <div className="task-metrics task-metrics-dates">
+            <span>
+              <strong className="metric-label">Created</strong>
+              {formatCreatedDate(task.createdAt)}
+            </span>
+            <span className="metric-countdown">
+              <strong className="metric-label">Remaining</strong>
+              <DeadlineCountdown task={task} size="md" showDue />
+            </span>
+            <span>
+              <strong className="metric-label">Duration</strong>
+              {task.duration}
+            </span>
           </div>
           {task.description && <p className="description-preview">{task.description}</p>}
           {task.notes && <p className="notes-preview"><span>Note</span>{task.notes}</p>}

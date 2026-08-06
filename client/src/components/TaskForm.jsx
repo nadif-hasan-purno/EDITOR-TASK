@@ -1,14 +1,24 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { CUSTOM_FIELD_TYPES, PRIORITIES, STATUSES } from '../constants.js';
 import CustomFieldInput from './CustomFieldInput.jsx';
 import { getTaskEditors } from '../utils/editors.js';
 import EditorBadge, { colorForEditor } from './EditorBadge.jsx';
+import DeadlineCountdown from './DeadlineCountdown.jsx';
+import {
+  dayjs,
+  duePresets,
+  formatCreatedDate,
+  fromDatetimeLocalValue,
+  getDueDate,
+  toDatetimeLocalValue,
+} from '../utils/dates.js';
 
 const emptyTask = {
   clientName: '',
   editorNames: [],
   projectName: '',
   googleDocLink: '',
+  dueDate: '',
   deadlineDays: 0,
   duration: 0,
   status: 'Todo',
@@ -21,12 +31,20 @@ const emptyTask = {
 };
 
 function prepareInitial(task) {
-  if (!task) return emptyTask;
+  if (!task) {
+    // Default new tasks to end of tomorrow — easy one-click change via presets
+    return {
+      ...emptyTask,
+      dueDate: toDatetimeLocalValue(dayjs().add(1, 'day').hour(18).minute(0).second(0).toDate()),
+    };
+  }
   const editorNames = getTaskEditors(task);
+  const due = getDueDate(task);
   return {
     ...emptyTask,
     ...task,
     editorNames,
+    dueDate: toDatetimeLocalValue(due),
     priority: task.priority || 'medium',
     pinned: Boolean(task.pinned),
     notes: task.notes || '',
@@ -57,6 +75,16 @@ export default function TaskForm({
   const [fieldBusy, setFieldBusy] = useState(false);
   const [editorBusy, setEditorBusy] = useState(false);
   const [error, setError] = useState('');
+
+  // Keep Description in sync with the task-page document (same field)
+  useEffect(() => {
+    if (!task) return;
+    const next = task.description || '';
+    setForm((current) => {
+      if ((current.description || '') === next) return current;
+      return { ...current, description: next };
+    });
+  }, [task?._id, task?.description, task?.updatedAt]);
 
   const availableDefinitions = useMemo(() => {
     const usedNames = new Set(form.customFields.map((field) => field.name.toLowerCase()));
@@ -210,6 +238,21 @@ export default function TaskForm({
     }));
   }
 
+  const previewTask = useMemo(() => ({
+    ...form,
+    dueDate: fromDatetimeLocalValue(form.dueDate),
+    status: form.status,
+  }), [form]);
+
+  const presets = useMemo(() => duePresets(), []);
+
+  function applyPreset(date) {
+    setForm((current) => ({
+      ...current,
+      dueDate: toDatetimeLocalValue(date),
+    }));
+  }
+
   async function submit(event) {
     event.preventDefault();
     setError('');
@@ -218,13 +261,18 @@ export default function TaskForm({
       setError('Select at least one editor.');
       return;
     }
+    const dueIso = fromDatetimeLocalValue(form.dueDate);
+    if (!dueIso) {
+      setError('Set a due date for this project.');
+      return;
+    }
     setSaving(true);
     try {
       await onSave({
         ...form,
         editorNames,
         editorName: editorNames[0],
-        deadlineDays: Number(form.deadlineDays),
+        dueDate: dueIso,
         duration: Number(form.duration),
         customFields: form.customFields.map(({ localId, _id, ...field }) => field),
       });
@@ -401,11 +449,71 @@ export default function TaskForm({
                 ))}
               </select>
             </label>
-            <label><span>Deadline (days) *</span><input required min="0" type="number" value={form.deadlineDays} onChange={update('deadlineDays')} /></label>
             <label><span>Duration *</span><input required min="0" step="any" type="number" value={form.duration} onChange={update('duration')} /></label>
+
+            <div className="wide date-system-panel">
+              <div className="section-heading tight">
+                <div>
+                  <p className="eyebrow">System properties</p>
+                  <h3>Dates</h3>
+                </div>
+                <DeadlineCountdown task={previewTask} size="md" showDue={false} />
+              </div>
+
+              <div className="date-system-grid">
+                <div className="date-system-field is-readonly">
+                  <span className="date-system-key">Created</span>
+                  <span className="date-system-val">
+                    {task?.createdAt ? formatCreatedDate(task.createdAt) : 'Set on save'}
+                  </span>
+                  <small className="muted tiny">Tracked automatically — like Notion</small>
+                </div>
+
+                <label className="date-system-field">
+                  <span className="date-system-key">Due date *</span>
+                  <input
+                    required
+                    type="datetime-local"
+                    value={form.dueDate || ''}
+                    onChange={update('dueDate')}
+                  />
+                  <small className="muted tiny">Project end — live countdown updates from this</small>
+                </label>
+              </div>
+
+              <div className="due-presets" role="group" aria-label="Quick due dates">
+                {presets.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    className="chip due-preset-chip"
+                    onClick={() => applyPreset(preset.date)}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="chip due-preset-chip"
+                  onClick={() => applyPreset(dayjs().add(1, 'hour').toDate())}
+                >
+                  +1 hour
+                </button>
+              </div>
+            </div>
+
             <label className="wide"><span>Google Doc Link</span><input type="url" placeholder="https://docs.google.com/..." value={form.googleDocLink} onChange={update('googleDocLink')} /></label>
             <label className="wide"><span>Frame.io Link</span><input type="url" placeholder="https://frame.io/..." value={form.frameIoLink} onChange={update('frameIoLink')} /></label>
-            <label className="wide"><span>Description</span><textarea rows="3" value={form.description} onChange={update('description')} /></label>
+            <label className="wide">
+              <span>Description</span>
+              <textarea
+                rows="4"
+                value={form.description}
+                onChange={update('description')}
+                placeholder="Same document as the task page — edits sync both ways."
+              />
+              <small className="muted tiny">Shared with the task page document editor.</small>
+            </label>
             <label className="wide">
               <span>Manager notes</span>
               <textarea

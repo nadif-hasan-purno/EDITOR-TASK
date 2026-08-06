@@ -7,6 +7,7 @@ const FIXED_FIELDS = [
   'editorNames',
   'projectName',
   'googleDocLink',
+  'dueDate',
   'deadlineDays',
   'duration',
   'status',
@@ -16,6 +17,38 @@ const FIXED_FIELDS = [
   'frameIoLink',
   'description',
 ];
+
+/** End of local calendar day for a given Date (server local TZ). */
+function endOfDay(date) {
+  const d = new Date(date);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+/**
+ * Whole days remaining until due (ceil). Past due → 0.
+ * Used for legacy filters / insights that still read deadlineDays.
+ */
+export function daysRemainingUntil(dueDate, from = new Date()) {
+  if (!dueDate) return 0;
+  const due = new Date(dueDate).getTime();
+  const now = new Date(from).getTime();
+  if (!Number.isFinite(due) || !Number.isFinite(now)) return 0;
+  const ms = due - now;
+  if (ms <= 0) return 0;
+  return Math.ceil(ms / (24 * 60 * 60 * 1000));
+}
+
+function parseDueDate(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    const error = new Error('dueDate must be a valid date/time.');
+    error.status = 400;
+    throw error;
+  }
+  return date;
+}
 
 function normalizeEditorNames(body) {
   let names = [];
@@ -117,7 +150,14 @@ export function buildTaskPayload(body = {}, { partial = false } = {}) {
   const payload = {};
 
   for (const field of FIXED_FIELDS) {
-    if (body[field] !== undefined && field !== 'editorNames' && field !== 'editorName') {
+    // dueDate / deadlineDays are normalized together below
+    if (
+      body[field] !== undefined
+      && field !== 'editorNames'
+      && field !== 'editorName'
+      && field !== 'dueDate'
+      && field !== 'deadlineDays'
+    ) {
       payload[field] = body[field];
     }
   }
@@ -146,10 +186,41 @@ export function buildTaskPayload(body = {}, { partial = false } = {}) {
   for (const field of ['googleDocLink', 'frameIoLink', 'description']) {
     if (payload[field] !== undefined) payload[field] = String(payload[field] ?? '').trim();
   }
-  for (const field of ['deadlineDays', 'duration']) {
-    if (payload[field] !== undefined && payload[field] !== '') {
-      payload[field] = Number(payload[field]);
+  if (payload.duration !== undefined && payload.duration !== '') {
+    payload.duration = Number(payload.duration);
+  }
+
+  // dueDate is the absolute deadline (Notion-style). deadlineDays is derived / shortcut.
+  const dueDateProvided = body.dueDate !== undefined;
+  const deadlineDaysProvided = body.deadlineDays !== undefined && body.deadlineDays !== '';
+
+  if (dueDateProvided) {
+    const due = parseDueDate(body.dueDate);
+    payload.dueDate = due;
+    if (due) {
+      payload.deadlineDays = daysRemainingUntil(due);
+    } else if (deadlineDaysProvided) {
+      const days = Number(body.deadlineDays);
+      if (!Number.isFinite(days) || days < 0) {
+        const error = new Error('deadlineDays must be a non-negative number.');
+        error.status = 400;
+        throw error;
+      }
+      payload.deadlineDays = days;
+    } else if (!partial) {
+      payload.deadlineDays = 0;
     }
+  } else if (deadlineDaysProvided) {
+    const days = Number(body.deadlineDays);
+    if (!Number.isFinite(days) || days < 0) {
+      const error = new Error('deadlineDays must be a non-negative number.');
+      error.status = 400;
+      throw error;
+    }
+    payload.deadlineDays = days;
+    const base = endOfDay(new Date());
+    base.setDate(base.getDate() + days);
+    payload.dueDate = base;
   }
 
   if (payload.status !== undefined && !TASK_STATUSES.includes(payload.status)) {
@@ -176,12 +247,24 @@ export function buildTaskPayload(body = {}, { partial = false } = {}) {
   }
 
   if (!partial) {
-    const requiredFields = ['clientName', 'projectName', 'deadlineDays', 'duration'];
+    const requiredFields = ['clientName', 'projectName', 'duration'];
     const missing = requiredFields.filter(
       (field) => payload[field] === undefined || payload[field] === '' || Number.isNaN(payload[field]),
     );
     if (!payload.editorName || !payload.editorNames?.length) {
       missing.push('editorNames');
+    }
+    // Need an absolute due date or a days shortcut to materialize one
+    if (payload.dueDate === undefined && payload.deadlineDays === undefined) {
+      missing.push('dueDate');
+    }
+    if (payload.deadlineDays === undefined && payload.dueDate) {
+      payload.deadlineDays = daysRemainingUntil(payload.dueDate);
+    }
+    if (payload.dueDate === undefined && Number.isFinite(payload.deadlineDays)) {
+      const base = endOfDay(new Date());
+      base.setDate(base.getDate() + payload.deadlineDays);
+      payload.dueDate = base;
     }
     if (missing.length) {
       const error = new Error(`Missing required fields: ${missing.join(', ')}`);

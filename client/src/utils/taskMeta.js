@@ -1,52 +1,42 @@
-/** Shared helpers for deadline grouping and display — no API changes required. */
+/** Shared helpers for deadline grouping and display. */
+import {
+  formatAgendaDate,
+  formatShortDate,
+  getDueDate,
+  getRemainingDays,
+  isDoneStatus,
+  startOfDay,
+  dueSortKey,
+  dayjs,
+} from './dates.js';
 
-const DONE_STATUSES = new Set(['Approved', 'Cancelled']);
-
-export function isDoneStatus(status) {
-  return DONE_STATUSES.has(status);
-}
-
-/** Treat deadlineDays as remaining days from today (matches “days left” UX). */
-export function getDueDate(task) {
-  const days = Number(task.deadlineDays);
-  const safeDays = Number.isFinite(days) ? Math.max(0, days) : 0;
-  const due = new Date();
-  due.setHours(0, 0, 0, 0);
-  due.setDate(due.getDate() + safeDays);
-  return due;
-}
-
-export function startOfDay(date = new Date()) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-export function formatShortDate(date) {
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
-
-export function formatAgendaDate(date) {
-  return date.toLocaleDateString(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  });
-}
+export {
+  formatAgendaDate,
+  formatShortDate,
+  getDueDate,
+  getRemainingDays,
+  isDoneStatus,
+  startOfDay,
+};
 
 /**
- * Build TickTick-style sections:
- * Overdue (0 days, still active) → Today → Tomorrow → dated buckets → Later → Done.
+ * Build sections from absolute due dates:
+ * Overdue → Today → Tomorrow → this week days → Later → Done.
  */
 export function groupTasksForAgenda(tasks) {
   const sections = {
     overdue: [],
+    today: [],
     tomorrow: [],
     later: [],
     done: [],
   };
 
   const dated = new Map();
+  const now = dayjs();
+  const todayStart = now.startOf('day');
+  const tomorrowStart = todayStart.add(1, 'day');
+  const weekEnd = todayStart.add(8, 'day');
 
   for (const task of tasks) {
     if (isDoneStatus(task.status)) {
@@ -54,38 +44,44 @@ export function groupTasksForAgenda(tasks) {
       continue;
     }
 
-    const days = Number(task.deadlineDays);
-    const remaining = Number.isFinite(days) ? days : 0;
+    const due = getDueDate(task);
+    if (!due) {
+      sections.later.push(task);
+      continue;
+    }
 
-    if (remaining <= 0) {
-      // 0 days left — still open work is due-now / overdue pressure
+    const dueMoment = dayjs(due);
+    const dueDay = dueMoment.startOf('day');
+
+    if (dueMoment.isBefore(now)) {
       sections.overdue.push(task);
-    } else if (remaining === 1) {
+    } else if (dueDay.isSame(todayStart, 'day')) {
+      sections.today.push(task);
+    } else if (dueDay.isSame(tomorrowStart, 'day')) {
       sections.tomorrow.push(task);
-    } else if (remaining <= 7) {
-      const due = getDueDate(task);
-      const key = due.toISOString().slice(0, 10);
-      if (!dated.has(key)) dated.set(key, { date: due, tasks: [] });
+    } else if (dueDay.isAfter(tomorrowStart) && dueDay.isBefore(weekEnd)) {
+      const key = dueDay.format('YYYY-MM-DD');
+      if (!dated.has(key)) dated.set(key, { date: dueDay.toDate(), tasks: [] });
       dated.get(key).tasks.push(task);
     } else {
       sections.later.push(task);
     }
   }
 
-  const sortByDays = (a, b) => Number(a.deadlineDays) - Number(b.deadlineDays)
+  const sortByDue = (a, b) => dueSortKey(a) - dueSortKey(b)
     || a.projectName.localeCompare(b.projectName);
 
   for (const key of Object.keys(sections)) {
-    sections[key].sort(sortByDays);
+    sections[key].sort(sortByDue);
   }
 
   const thisWeekGroups = [...dated.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([, group]) => ({
-      id: `day-${group.date.toISOString().slice(0, 10)}`,
+      id: `day-${dayjs(group.date).format('YYYY-MM-DD')}`,
       title: formatAgendaDate(group.date),
       count: group.tasks.length,
-      tasks: group.tasks.sort(sortByDays),
+      tasks: group.tasks.sort(sortByDue),
       tone: 'default',
     }));
 
@@ -94,10 +90,19 @@ export function groupTasksForAgenda(tasks) {
   if (sections.overdue.length) {
     result.push({
       id: 'overdue',
-      title: 'Overdue / Due today',
+      title: 'Overdue',
       count: sections.overdue.length,
       tasks: sections.overdue,
       tone: 'danger',
+    });
+  }
+  if (sections.today.length) {
+    result.push({
+      id: 'today',
+      title: 'Today',
+      count: sections.today.length,
+      tasks: sections.today,
+      tone: 'warn',
     });
   }
   if (sections.tomorrow.length) {

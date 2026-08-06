@@ -1,5 +1,6 @@
 import { isDoneStatus, priorityRank } from './taskMeta.js';
 import { formatEditorsLabel, getTaskEditors, isMultiEditorTask } from './editors.js';
+import { getDueDate, getRemainingDays, dueSortKey, dayjs } from './dates.js';
 
 export function matchesSearch(task, query) {
   const q = String(query || '').trim().toLowerCase();
@@ -26,15 +27,16 @@ export function matchesSearch(task, query) {
 export function matchesSmartFilter(task, smart) {
   if (!smart) return true;
 
-  const days = Number(task.deadlineDays);
-  const remaining = Number.isFinite(days) ? days : 0;
+  const remaining = getRemainingDays(task);
+  const due = getDueDate(task);
   const open = !isDoneStatus(task.status);
+  const overdue = open && due && dayjs(due).isBefore(dayjs());
 
   switch (smart) {
     case 'overdue':
-      return open && remaining <= 0;
+      return Boolean(overdue) || (open && remaining <= 0 && due);
     case 'due-week':
-      return open && remaining > 0 && remaining <= 7;
+      return open && !overdue && remaining > 0 && remaining <= 7;
     case 'high':
       return open && (task.priority || 'medium') === 'high';
     case 'revision':
@@ -61,13 +63,21 @@ export function applyLocalFilters(tasks, { search = '', smart = '', hideDone = f
   });
 }
 
+function isTaskOverdue(task) {
+  if (isDoneStatus(task.status)) return false;
+  const due = getDueDate(task);
+  if (!due) return false;
+  return dayjs(due).isBefore(dayjs());
+}
+
 export function buildInsights(tasks) {
   const open = tasks.filter((task) => !isDoneStatus(task.status));
   const approved = tasks.filter((task) => task.status === 'Approved');
   const revision = tasks.filter((task) => task.status === 'In Revision');
-  const overdue = open.filter((task) => Number(task.deadlineDays) <= 0);
+  const overdue = open.filter((task) => isTaskOverdue(task));
   const dueWeek = open.filter((task) => {
-    const days = Number(task.deadlineDays);
+    if (isTaskOverdue(task)) return false;
+    const days = getRemainingDays(task);
     return days > 0 && days <= 7;
   });
   const high = open.filter((task) => (task.priority || 'medium') === 'high');
@@ -110,7 +120,7 @@ export function buildEditorWorkload(tasks) {
       row.open += 1;
       row.duration += Number(task.duration) || 0;
       if ((task.priority || 'medium') === 'high') row.high += 1;
-      if (Number(task.deadlineDays) <= 0) row.overdue += 1;
+      if (isTaskOverdue(task)) row.overdue += 1;
       if (assigned.length > 1) row.collab += 1;
     }
   }
@@ -130,7 +140,7 @@ export function buildClientWorkload(tasks) {
     const row = map.get(name);
     row.open += 1;
     if ((task.priority || 'medium') === 'high') row.high += 1;
-    if (Number(task.deadlineDays) <= 0) row.overdue += 1;
+    if (isTaskOverdue(task)) row.overdue += 1;
   }
 
   return [...map.values()].sort((a, b) => b.open - a.open || a.client.localeCompare(b.client));
@@ -151,6 +161,6 @@ export function sortForManagement(tasks) {
     if (priorityRank(a.priority) !== priorityRank(b.priority)) {
       return priorityRank(a.priority) - priorityRank(b.priority);
     }
-    return Number(a.deadlineDays) - Number(b.deadlineDays);
+    return dueSortKey(a) - dueSortKey(b);
   });
 }

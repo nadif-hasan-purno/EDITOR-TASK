@@ -64,6 +64,12 @@ const taskSchema = new mongoose.Schema(
       default: '',
       validate: optionalUrlValidator,
     },
+    /** Absolute project end / deadline (source of truth for countdown). */
+    dueDate: { type: Date, default: null },
+    /**
+     * Whole calendar days from “now” to dueDate (legacy + quick filters).
+     * Kept in sync from dueDate on write; still accepted on create for shortcuts.
+     */
     deadlineDays: { type: Number, required: true, min: 0 },
     duration: { type: Number, required: true, min: 0 },
     status: { type: String, required: true, enum: TASK_STATUSES, default: 'Todo' },
@@ -84,5 +90,6 @@ const taskSchema = new mongoose.Schema(
 
 taskSchema.index({ status: 1, clientName: 1, editorName: 1 });
 taskSchema.index({ editorNames: 1 });
+taskSchema.index({ dueDate: 1 });
 
 export default mongoose.model('Task', taskSchema);

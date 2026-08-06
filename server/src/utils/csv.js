@@ -5,6 +5,8 @@ const FIXED_HEADERS = [
   ['Editors', 'editorNames'],
   ['Project Name', 'projectName'],
   ['Google Doc Link', 'googleDocLink'],
+  ['Created At', 'createdAt'],
+  ['Due Date', 'dueDate'],
   ['Deadline (days)', 'deadlineDays'],
   ['Duration', 'duration'],
   ['Status', 'status'],

@@ -1,9 +1,12 @@
 import React from 'react';
 import { EditorBadges } from './EditorBadge.jsx';
 import { getTaskEditors } from '../utils/editors.js';
+import DeadlineCountdown from './DeadlineCountdown.jsx';
+import { formatCreatedDate } from '../utils/dates.js';
 
 export default function ListView({
   tasks,
+  onOpen,
   onEdit,
   onDelete,
   onTogglePin,
@@ -32,6 +35,7 @@ export default function ListView({
             <th>Editor</th>
             <th>Status</th>
             <th>Priority</th>
+            <th>Created</th>
             <th>Deadline</th>
             <th>Duration</th>
             <th>Links</th>
@@ -52,7 +56,13 @@ export default function ListView({
               <td>
                 <div className="table-project">
                   {task.pinned && <span className="pin-mark" title="Pinned">★</span>}
-                  <strong>{task.projectName}</strong>
+                  {onOpen ? (
+                    <button type="button" className="table-project-open" onClick={() => onOpen(task)}>
+                      <strong>{task.projectName}</strong>
+                    </button>
+                  ) : (
+                    <strong>{task.projectName}</strong>
+                  )}
                 </div>
                 {task.description && <span className="table-description">{task.description}</span>}
                 {task.notes && <span className="table-notes">Note: {task.notes}</span>}
@@ -67,7 +77,14 @@ export default function ListView({
                   {task.priority || 'medium'}
                 </span>
               </td>
-              <td>{task.deadlineDays} days</td>
+              <td className="col-created">
+                <span className="table-created" title={task.createdAt || ''}>
+                  {formatCreatedDate(task.createdAt)}
+                </span>
+              </td>
+              <td className="col-deadline">
+                <DeadlineCountdown task={task} size="sm" showDue />
+              </td>
               <td>{task.duration}</td>
               <td>
                 <div className="link-row">

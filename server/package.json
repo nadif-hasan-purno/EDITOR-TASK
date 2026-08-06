@@ -1,0 +1,21 @@
+{
+  "name": "task-tracker-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Express and MongoDB API for the video agency task tracker.",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "check": "node --check src/index.js"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "mongoose": "^9.8.0"
+  }
+}
